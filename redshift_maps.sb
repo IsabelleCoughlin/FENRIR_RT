@@ -1,0 +1,85 @@
+#!/bin/bash
+#SBATCH --job-name=disk_img
+#SBATCH --output=/deac/phy/cardenasGrp/cougig23/fenrir_reflection/logs/%x_%j.out
+#SBATCH --error=/deac/phy/cardenasGrp/cougig23/fenrir_reflection/logs/%x_%j.err
+#SBATCH --time=04:00:00
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=16G
+
+
+source /deac/phy/cardenasGrp/cougig23/fenrir_reflection/env/load_xray_env.sh
+
+BASE="/deac/phy/cardenasGrp/cougig23/fenrir_reflection/software/fenrir_rt"
+cd "$BASE"
+
+N=2000
+NPROC=4
+
+NTHICK=4
+Mdot_MAX=0.3
+Mdot_MIN=0.0
+
+
+PARAM_FILE="${BASE}/jobs_clean/disk_params.txt"
+
+
+plot_case () {
+    PLOTTER="${BASE}/diskimg_clean/redshift_map_plotter.py"
+    PLOT_DIR="${OUT_BASE}/plots"
+
+    mkdir -p "$PLOT_DIR"
+
+    for ZOOM_INFO in "zoom1 30" "zoom2 70" "zoom3 210"
+    do
+        read -r ZOOM_NAME IMG_SIZE <<< "$ZOOM_INFO"
+
+        DATA_DIR="${OUT_BASE}/${ZOOM_NAME}"
+        PREFIX_NAME="disk_${ZOOM_NAME}_a${A}_i${COS_INCL}_n${N}_size${IMG_SIZE}"
+        DATA_PREFIX="${DATA_DIR}/${PREFIX_NAME}"
+
+        PLOT_FILE="${PLOT_DIR}/gmap_${ZOOM_NAME}_a${A}_i${COS_INCL}_n${N}_size${IMG_SIZE}.png"
+
+        echo "Creating g-factor plot:"
+        echo "  $PLOT_FILE"
+
+        python "$PLOTTER" \
+            "$PLOT_FILE" \
+            "$A" \
+            "${DATA_PREFIX}_cat0.npy" \
+            "${DATA_PREFIX}_cat1.npy" \
+            "${DATA_PREFIX}_cat2.npy" \
+            "${DATA_PREFIX}_cat3.npy"
+
+        echo "Created: $PLOT_FILE"
+    done
+} 
+
+
+while IFS=$' \t\r' read -r A COS_INCL || [[ -n "${A:-}" ]]
+do
+    # Skip blank lines and comments.
+    [[ -z "${A:-}" || "$A" == \#* ]] && continue
+
+    if [[ -z "${COS_INCL:-}" ]]
+    then
+        echo "ERROR: missing COS_INCL for A=$A" >&2
+        exit 1
+    fi
+
+    echo "========================================"
+    echo "Starting case A=$A, COS_INCL=$COS_INCL"
+    echo "========================================"
+
+    OUT_BASE="${BASE}/outputs/disk_images/a${A}_i${COS_INCL}_n${N}"
+    mkdir -p "$OUT_BASE" "${OUT_BASE}/plots"
+
+    #run_zoom zoom1 30
+    #run_zoom zoom2 70
+    #run_zoom zoom3 210
+
+    plot_case
+
+    echo "Completed case A=$A, COS_INCL=$COS_INCL"
+
+
+done < "$PARAM_FILE"

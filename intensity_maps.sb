@@ -1,0 +1,33 @@
+#!/bin/bash
+#SBATCH --job-name=intensity_maps
+#SBATCH --output=/deac/phy/cardenasGrp/cougig23/fenrir_reflection/logs/%x_%j.out
+#SBATCH --error=/deac/phy/cardenasGrp/cougig23/fenrir_reflection/logs/%x_%j.err
+#SBATCH --time=00:10:00
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=16G
+
+# This slurm file creates like Figure 5 from the paper
+
+source /deac/phy/cardenasGrp/cougig23/fenrir_reflection/env/load_xray_env.sh
+
+cd /deac/phy/cardenasGrp/cougig23/fenrir_reflection/software/fenrir_rt
+
+mkdir -p outputs/intensity_plots
+
+a=0.0
+h=3.0
+i=0.5
+
+
+python intensity_line_profiles/energy_intensity_maps.py \
+  outputs/intensity_plots/a0p0_h3p0_i0p5_zoom2_type2.png 0.0 \
+  outputs/disk_images/a0.0_i0.5_n2000/zoom2/disk_zoom2_a0.0_i0.5_n2000_size70_cat0.npy \
+  outputs/disk_images/a0.0_i0.5_n2000/zoom2/disk_zoom2_a0.0_i0.5_n2000_size70_cat1.npy \
+  outputs/disk_images/a0.0_i0.5_n2000/zoom2/disk_zoom2_a0.0_i0.5_n2000_size70_cat2.npy \
+  outputs/disk_images/a0.0_i0.5_n2000/zoom2/disk_zoom2_a0.0_i0.5_n2000_size70_cat3.npy \
+  outputs/emissivity_plots/a0p0_h3p0_N5000000_bins150_mdot/test_corona_test_hist0.npy \
+  outputs/emissivity_plots/a0p0_h3p0_N5000000_bins150_mdot/test_corona_test_hist1.npy \
+  outputs/emissivity_plots/a0p0_h3p0_N5000000_bins150_mdot/test_corona_test_hist2.npy \
+  outputs/emissivity_plots/a0p0_h3p0_N5000000_bins150_mdot/test_corona_test_hist3.npy
+
+echo "Done plotting emissivity profiles"

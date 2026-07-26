@@ -1,0 +1,206 @@
+#!/bin/bash
+#SBATCH --job-name=disk_img
+#SBATCH --output=/deac/phy/cardenasGrp/cougig23/fenrir_reflection/logs/%x_%j.out
+#SBATCH --error=/deac/phy/cardenasGrp/cougig23/fenrir_reflection/logs/%x_%j.err
+#SBATCH --time=04:00:00
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=8G
+: '
+This is code that runs the ray tracing for NTHICk number of varying thicknesses from the disk
+to the observer. It also automatically creates redshift maps and intensity maps for each case.
+'
+
+
+source /deac/phy/cardenasGrp/cougig23/fenrir_reflection/env/load_xray_env.sh
+
+BASE="/deac/phy/cardenasGrp/cougig23/fenrir_reflection/software/fenrir_rt"
+cd "$BASE"
+
+N=20
+NPROC=4
+
+NTHICK=4
+Mdot_MAX=0.3
+Mdot_MIN=0.0
+
+
+PARAM_FILE="${BASE}/jobs_clean/disk_params.txt"
+
+
+run_zoom () {
+    ZOOM_NAME="$1"
+    IMG_SIZE="$2"
+
+    OUT_DIR="${OUT_BASE}/${ZOOM_NAME}"
+    mkdir -p "$OUT_DIR"
+
+    PREFIX_NAME="disk_${ZOOM_NAME}_a${A}_i${COS_INCL}_n${N}_size${IMG_SIZE}"
+    OUT_PREFIX="${OUT_DIR}/${PREFIX_NAME}"
+
+    
+
+    echo "Running ${ZOOM_NAME}, IMG_SIZE=${IMG_SIZE}"
+
+    pids=()
+    for IPROC in $(seq 0 $((NPROC-1)))
+    do
+        PROC_PREFIX="${OUT_PREFIX}_proc${IPROC}"
+
+        "${BASE}/bin/fenrir_disk_mdot" \
+            "$N" "$NPROC" "$IPROC" \
+            "$A" "$COS_INCL" \
+            "$NTHICK" "$Mdot_MAX" "$Mdot_MIN" \
+            "$IMG_SIZE" "$PROC_PREFIX" &
+        pids+=($!)
+    done
+
+    wait "${pids[@]}"
+
+        EXPECTED_RAYS=$((N * N))
+    CONVERTER="${BASE}/diskimg_clean/txt_to_npy_diskimg.py"
+
+    for T in $(seq 0 $((NTHICK - 1)))
+    do
+        echo "Processing thickness category ${T}"
+
+        COMBINED_TXT="${OUT_DIR}/${PREFIX_NAME}_cat${T}.txt"
+        OUTPUT_BASE="${OUT_DIR}/${PREFIX_NAME}_cat${T}"
+        COMBINED_NPY="${OUTPUT_BASE}.npy"
+
+        rm -f -- "$COMBINED_TXT" "$COMBINED_NPY"
+        : > "$COMBINED_TXT"
+
+        # Merge the output from every process.
+        for IPROC in $(seq 0 $((NPROC - 1)))
+        do
+            # Do not quote the * portions; they need to expand.
+            part_files=(
+                "${OUT_PREFIX}_proc${IPROC}"*"${T}.txt"
+            )
+
+            # An unmatched glob remains literal, so verify each result.
+            for PART_FILE in "${part_files[@]}"
+            do
+                if [[ ! -s "$PART_FILE" ]]
+                then
+                    echo "ERROR: missing or empty file matching:" >&2
+                    echo "  ${OUT_PREFIX}_proc${IPROC}*${T}.txt" >&2
+                    exit 1
+                fi
+
+                PART_LINES=$(wc -l < "$PART_FILE")
+                echo "Adding $PART_FILE (${PART_LINES} lines)"
+
+                cat -- "$PART_FILE" >> "$COMBINED_TXT"
+            done
+        done
+
+        COMBINED_LINES=$(wc -l < "$COMBINED_TXT")
+
+        echo "Merged rays:   $COMBINED_LINES"
+        echo "Expected rays: $EXPECTED_RAYS"
+
+        if (( COMBINED_LINES != EXPECTED_RAYS ))
+        then
+            echo "ERROR: expected ${EXPECTED_RAYS} rays, found ${COMBINED_LINES}" >&2
+            exit 1
+        fi
+
+        python "$CONVERTER" "$COMBINED_TXT" "$OUTPUT_BASE"
+
+        python -c "
+import numpy as np
+
+filename = r'${COMBINED_NPY}'
+expected = (9, ${EXPECTED_RAYS})
+data = np.load(filename, allow_pickle=True)
+
+print('NumPy file:', filename)
+print('Actual shape:', data.shape)
+print('Expected shape:', expected)
+
+if data.shape != expected:
+    raise SystemExit(
+        f'Invalid conversion: expected {expected}, received {data.shape}'
+    )
+"
+
+        # Delete process text files only after successful validation.
+        for IPROC in $(seq 0 $((NPROC - 1)))
+        do
+            part_files=(
+                "${OUT_PREFIX}_proc${IPROC}"*"${T}.txt"
+            )
+
+            for PART_FILE in "${part_files[@]}"
+            do
+                [[ -f "$PART_FILE" ]] && rm -f -- "$PART_FILE"
+            done
+        done
+
+        rm -f -- "$COMBINED_TXT"
+
+        echo "Created: $COMBINED_NPY"
+    done
+}
+
+plot_case () {
+    PLOTTER="${BASE}/diskimg_clean/redshift_map_plotter.py"
+    PLOT_DIR="${OUT_BASE}/plots"
+
+    mkdir -p "$PLOT_DIR"
+
+    for ZOOM_INFO in "zoom1 30" "zoom2 70" "zoom3 210"
+    do
+        read -r ZOOM_NAME IMG_SIZE <<< "$ZOOM_INFO"
+
+        DATA_DIR="${OUT_BASE}/${ZOOM_NAME}"
+        PREFIX_NAME="disk_${ZOOM_NAME}_a${A}_i${COS_INCL}_n${N}_size${IMG_SIZE}"
+        DATA_PREFIX="${DATA_DIR}/${PREFIX_NAME}"
+
+        PLOT_FILE="${PLOT_DIR}/gmap_${ZOOM_NAME}_a${A}_i${COS_INCL}_n${N}_size${IMG_SIZE}.png"
+
+        echo "Creating g-factor plot:"
+        echo "  $PLOT_FILE"
+
+        python "$PLOTTER" \
+            "$PLOT_FILE" \
+            "$A" \
+            "${DATA_PREFIX}_cat0.npy" \
+            "${DATA_PREFIX}_cat1.npy" \
+            "${DATA_PREFIX}_cat2.npy" \
+            "${DATA_PREFIX}_cat3.npy"
+
+        echo "Created: $PLOT_FILE"
+    done
+} 
+
+
+while IFS=$' \t\r' read -r A COS_INCL || [[ -n "${A:-}" ]]
+do
+    # Skip blank lines and comments.
+    [[ -z "${A:-}" || "$A" == \#* ]] && continue
+
+    if [[ -z "${COS_INCL:-}" ]]
+    then
+        echo "ERROR: missing COS_INCL for A=$A" >&2
+        exit 1
+    fi
+
+    echo "========================================"
+    echo "Starting case A=$A, COS_INCL=$COS_INCL"
+    echo "========================================"
+
+    OUT_BASE="${BASE}/outputs/disk_images/a${A}_i${COS_INCL}_n${N}"
+    mkdir -p "$OUT_BASE" "${OUT_BASE}/plots"
+
+    run_zoom zoom1 30
+    run_zoom zoom2 70
+    run_zoom zoom3 210
+
+    plot_case
+
+    echo "Completed case A=$A, COS_INCL=$COS_INCL"
+
+
+done < "$PARAM_FILE"
