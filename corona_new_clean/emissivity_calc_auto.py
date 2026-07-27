@@ -166,7 +166,7 @@ while (l < nBins):
 		# Illumination contribution from photons in this bin.
         # The gamma and proper-area terms convert photon counts into local flux.
         # energyInBin**specIndex applies the redshift/blueshift weighting.
-		fluxInBin = (1./(gammaInBin*grAreaInBin)) * (energyInBin**specIndex)
+		fluxInBin = (1./(gammaInBin*grAreaInBin)) * (energyInBin**specIndex) * np.sin(deltaInBin)
 		fluxArray[l] = np.sum(fluxInBin)
 	else:
 		# Empty radial bins get zero flux and zero diagnostic angle.
