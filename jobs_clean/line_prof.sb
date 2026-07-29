@@ -1,0 +1,69 @@
+#!/bin/bash
+#SBATCH --job-name=fenrir_old_lineprof
+#SBATCH --partition=small
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=4G
+#SBATCH --time=00:30:00
+#SBATCH --output=line_profile_%j.out
+#SBATCH --error=line_profile_%j.err
+
+set -euo pipefail
+
+source /deac/phy/cardenasGrp/cougig23/fenrir_reflection/env/load_xray_env.sh
+
+BASE="/deac/phy/cardenasGrp/cougig23/fenrir_reflection/software/fenrir_rt_clean"
+DISK_DIR="${BASE}/diskimg_clean"
+EMISS_DIR="${BASE}/outputs/emissivity"
+OUT_DIR="${BASE}/outputs/line_profiles"
+SCRIPT="${BASE}/intensity_line_profiles/line_profile_onefile.py"
+
+SPIN="0.0"
+R_OUT="30"
+
+mkdir -p "$OUT_DIR"
+
+DISK_FILES=(
+    "${DISK_DIR}/disk_a09_i60_mdot03_size70_n1000.npy"
+    "${DISK_DIR}/disk_a09_i60_mdot02_size70_n1000.npy"
+    "${DISK_DIR}/disk_a09_i60_mdot01_size70_n1000.npy"
+    "${DISK_DIR}/disk_a09_i60_mdot00_size70_n1000.npy"
+)
+
+EMISS_FILES=(
+    "${EMISS_DIR}/100_test_corona_test_hist0.npy"
+    "${EMISS_DIR}/100_test_corona_test_hist1.npy"
+    "${EMISS_DIR}/100_test_corona_test_hist2.npy"
+    "${EMISS_DIR}/100_test_corona_test_hist3.npy"
+)
+
+# Check all inputs before starting.
+for file in "$SCRIPT" "${DISK_FILES[@]}" "${EMISS_FILES[@]}"; do
+    if [[ ! -s "$file" ]]; then
+        echo "ERROR: Missing or empty input: $file" >&2
+        exit 1
+    fi
+done
+
+OUTPUT="${OUT_DIR}/a09_i60_h3_bins56.png"
+
+echo "Job ID: ${SLURM_JOB_ID}"
+echo "Node: $(hostname)"
+echo "Started: $(date)"
+echo "Output: $OUTPUT"
+
+srun python3 "$SCRIPT" \
+    "$OUTPUT" \
+    "$SPIN" \
+    "$R_OUT" \
+    "${DISK_FILES[@]}" \
+    "${EMISS_FILES[@]}"
+
+if [[ ! -s "$OUTPUT" ]]; then
+    echo "ERROR: Output plot was not created" >&2
+    exit 1
+fi
+
+echo "Created: $OUTPUT"
+echo "Finished: $(date)"

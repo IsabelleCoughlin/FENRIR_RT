@@ -1,0 +1,93 @@
+#!/bin/bash
+#SBATCH --job-name=fenrir_lineprof
+#SBATCH --partition=small
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=4G
+#SBATCH --time=00:30:00
+#SBATCH --array=0-26%9
+#SBATCH --output=line_profile_%A_%a.out
+#SBATCH --error=line_profile_%A_%a.err
+
+set -euo pipefail
+
+source /deac/phy/cardenasGrp/cougig23/fenrir_reflection/env/load_xray_env.sh
+
+BASE="/deac/phy/cardenasGrp/cougig23/fenrir_reflection/software/fenrir_rt_clean"
+DISK_DIR="${BASE}/outputs/disk_images"
+EMISS_DIR="${BASE}/outputs/emissivity"
+OUT_DIR="${BASE}/outputs/line_profiles"
+SCRIPT="${BASE}/intensity_line_profiles/line_profile_onefile.py"
+
+R_OUT="30"
+N_IMAGE="2000"
+ZOOM="zoom2"
+IMG_SIZE="70"
+
+SPINS=("0.0" "0.9" "0.99")
+HEIGHTS=("3.0" "6.0" "12.0")
+
+# The disk-image filenames use inclination in radians.
+INCL_DEG=("15" "30" "60")
+INCL_RAD=("0.96593" "0.86603" "0.5")
+
+CASE="${SLURM_ARRAY_TASK_ID}"
+
+SPIN_INDEX=$(( CASE / 9 ))
+HEIGHT_INDEX=$(( (CASE % 9) / 3 ))
+INCL_INDEX=$(( CASE % 3 ))
+
+SPIN="${SPINS[$SPIN_INDEX]}"
+HEIGHT="${HEIGHTS[$HEIGHT_INDEX]}"
+I_DEG="${INCL_DEG[$INCL_INDEX]}"
+I_RAD="${INCL_RAD[$INCL_INDEX]}"
+
+SPIN_TAG="${SPIN/./p}"       # e.g. 0.99 -> 0p99
+HEIGHT_TAG="${HEIGHT/./p}"   # e.g. 3.0 -> 3p0
+
+PREFIX="disk_${ZOOM}_a${SPIN}_i${I_RAD}_n${N_IMAGE}_size${IMG_SIZE}"
+DISK_CASE_DIR="${DISK_DIR}/a${SPIN}_i${I_RAD}_n${N_IMAGE}/${ZOOM}"
+EMISS_CASE_DIR="${EMISS_DIR}/a${SPIN_TAG}_h${HEIGHT_TAG}_N5000000_bins150_mdot"
+
+DISK_FILES=(
+    "${DISK_CASE_DIR}/${PREFIX}_cat0.npy"
+    "${DISK_CASE_DIR}/${PREFIX}_cat1.npy"
+    "${DISK_CASE_DIR}/${PREFIX}_cat2.npy"
+    "${DISK_CASE_DIR}/${PREFIX}_cat3.npy"
+)
+
+EMISS_FILES=(
+    "${EMISS_CASE_DIR}/test_corona_test_hist0.npy"
+    "${EMISS_CASE_DIR}/test_corona_test_hist1.npy"
+    "${EMISS_CASE_DIR}/test_corona_test_hist2.npy"
+    "${EMISS_CASE_DIR}/test_corona_test_hist3.npy"
+)
+
+mkdir -p "$OUT_DIR"
+
+for file in "$SCRIPT" "${DISK_FILES[@]}" "${EMISS_FILES[@]}"; do
+    if [[ ! -s "$file" ]]; then
+        echo "ERROR: Missing or empty input: $file" >&2
+        exit 1
+    fi
+done
+
+OUTPUT="${OUT_DIR}/lineprof_a${SPIN_TAG}_h${HEIGHT_TAG}_i${I_DEG}deg_zoom2_size70.png"
+
+echo "a=${SPIN}, h=${HEIGHT}, i=${I_DEG} deg (${I_RAD} rad)"
+echo "Output: ${OUTPUT}"
+
+srun python3 "$SCRIPT" \
+    "$OUTPUT" \
+    "$SPIN" \
+    "$R_OUT" \
+    "${DISK_FILES[@]}" \
+    "${EMISS_FILES[@]}"
+
+[[ -s "$OUTPUT" ]] || {
+    echo "ERROR: Output plot was not created: $OUTPUT" >&2
+    exit 1
+}
+
+echo "Created: $OUTPUT"
