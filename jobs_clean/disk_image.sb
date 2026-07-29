@@ -2,9 +2,9 @@
 #SBATCH --job-name=disk_img
 #SBATCH --output=/deac/phy/cardenasGrp/cougig23/fenrir_reflection/logs/%x_%j.out
 #SBATCH --error=/deac/phy/cardenasGrp/cougig23/fenrir_reflection/logs/%x_%j.err
-#SBATCH --time=04:00:00
+#SBATCH --time=12:00:00
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=8G
+#SBATCH --mem=32G
 : '
 This is code that runs the ray tracing for NTHICk number of varying thicknesses from the disk
 to the observer. It also automatically creates redshift maps and intensity maps for each case.
@@ -13,10 +13,10 @@ to the observer. It also automatically creates redshift maps and intensity maps 
 
 source /deac/phy/cardenasGrp/cougig23/fenrir_reflection/env/load_xray_env.sh
 
-BASE="/deac/phy/cardenasGrp/cougig23/fenrir_reflection/software/fenrir_rt"
+BASE="/deac/phy/cardenasGrp/cougig23/fenrir_reflection/software/fenrir_rt_clean"
 cd "$BASE"
 
-N=20
+N=2000
 NPROC=4
 
 NTHICK=4
@@ -46,7 +46,7 @@ run_zoom () {
     do
         PROC_PREFIX="${OUT_PREFIX}_proc${IPROC}"
 
-        "${BASE}/bin/fenrir_disk_mdot" \
+        "${BASE}/diskimg_clean/img_plane_parallel_mdot" \
             "$N" "$NPROC" "$IPROC" \
             "$A" "$COS_INCL" \
             "$NTHICK" "$Mdot_MAX" "$Mdot_MIN" \
@@ -160,6 +160,7 @@ plot_case () {
 
         PLOT_FILE="${PLOT_DIR}/gmap_${ZOOM_NAME}_a${A}_i${COS_INCL}_n${N}_size${IMG_SIZE}.png"
 
+        python -c "import numpy as np; x=np.load('${DATA_PREFIX}_cat0.npy'); print(x.shape, x.size)"
         echo "Creating g-factor plot:"
         echo "  $PLOT_FILE"
 
@@ -171,7 +172,15 @@ plot_case () {
             "${DATA_PREFIX}_cat2.npy" \
             "${DATA_PREFIX}_cat3.npy"
 
+        STATUS=$?
+
+        if [[ $STATUS -ne 0 ]]; then
+            echo "FAILED: ${ZOOM_NAME}, size ${IMG_SIZE}, exit code ${STATUS}" >&2
+        else
+            echo "Created: $PLOT_FILE"
+        fi
         echo "Created: $PLOT_FILE"
+        
     done
 } 
 

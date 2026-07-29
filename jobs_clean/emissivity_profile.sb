@@ -2,25 +2,24 @@
 #SBATCH --job-name=irradiation_profiles
 #SBATCH --output=/deac/phy/cardenasGrp/cougig23/fenrir_reflection/logs/%x_%j.out
 #SBATCH --error=/deac/phy/cardenasGrp/cougig23/fenrir_reflection/logs/%x_%j.err
-#SBATCH --time=02:00:00
+#SBATCH --time=13:00:00
 #SBATCH --cpus-per-task=4
-#SBATCH --mem=16G
+#SBATCH --mem=32G
 
 # This code runs the corona to disk ray tracing and creates emissivity profiles for all of the cases stored in test_corona_params.txt
 # To create FITS files, use emissivity_prof_fits.sb (not implemented yet)
-
 source /deac/phy/cardenasGrp/cougig23/fenrir_reflection/env/load_xray_env.sh
-cd /deac/phy/cardenasGrp/cougig23/fenrir_reflection/software/fenrir_rt/corona_new_clean
+cd /deac/phy/cardenasGrp/cougig23/fenrir_reflection/software/fenrir_rt_clean/corona_new_clean
 
 # define the number of photons to trace
 num_photons=5000000
 num_threads=4
 
-param_file="/deac/phy/cardenasGrp/cougig23/fenrir_reflection/software/fenrir_rt/jobs_clean/test_corona_params.txt"
+param_file="/deac/phy/cardenasGrp/cougig23/fenrir_reflection/software/fenrir_rt_clean/jobs_clean/test_corona_params.txt"
 machine_name="test"
 
 mkdir -p /deac/phy/cardenasGrp/cougig23/fenrir_reflection/logs
-output_base="/deac/phy/cardenasGrp/cougig23/fenrir_reflection/software/fenrir_rt/outputs/emissivity_plots"
+output_base="/deac/phy/cardenasGrp/cougig23/fenrir_reflection/software/fenrir_rt_clean/outputs/emissivity"
 mkdir -p $output_base
 
 
@@ -47,7 +46,7 @@ do
 	pids=()
 	while [ $dummy_i -lt $num_threads ]
 	do
-		/deac/phy/cardenasGrp/cougig23/fenrir_reflection/software/fenrir_rt/bin/fenrir_lp_mdot $num_photons $num_threads $dummy_i $spin_val $height_val $numMdot $initMdot $finalMdot "${output_path}/${machine_name}_corona_test" &
+		/deac/phy/cardenasGrp/cougig23/fenrir_reflection/software/fenrir_rt_clean/corona_new_clean/corona_parallel_mdot $num_photons $num_threads $dummy_i $spin_val $height_val $numMdot $initMdot $finalMdot "${output_path}/${machine_name}_corona_test" &
 		pids+=($!)
 		dummy_i=$((dummy_i+1))
 	done
@@ -94,7 +93,7 @@ do
 		pids=()
 		while [ $dummy_k -lt $num_threads ] && [ $dummy_j -lt $numMdot ]
 		do
-			python emissivity_calc_auto.py ${output_path}/ ${machine_name}_corona_test_cat ${machine_name}_corona_test_hist $dummy_j $spin_val $height_val $numRadBins &
+			python /deac/phy/cardenasGrp/cougig23/fenrir_reflection/software/fenrir_rt_clean/corona_new_clean/emissivity_calc_single_case.py ${output_path}/ ${machine_name}_corona_test_cat ${machine_name}_corona_test_hist $dummy_j $spin_val $height_val $numRadBins &
 			pids+=($!)
 			dummy_k=$((dummy_k+1))
 			dummy_j=$((dummy_j+1))
@@ -102,7 +101,7 @@ do
 		wait ${pids[*]}
 	done
 
-    python /deac/phy/cardenasGrp/cougig23/fenrir_reflection/software/fenrir_rt/corona_new_clean/plot_emissivity_multi.py \
+    python /deac/phy/cardenasGrp/cougig23/fenrir_reflection/software/fenrir_rt_clean/corona_new_clean/plot_emissivity_multi.py \
         "${output_path}/plots/a${spin_label}_h${height_label}_N${num_photons}_bins${numRadBins}_mdot.png" \
         "$spin_val" \
         "${output_path}/test_corona_test_hist0.npy" \

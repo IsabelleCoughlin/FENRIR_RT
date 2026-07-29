@@ -45,7 +45,7 @@ def rIsco(a):
 
 
 outfile = sys.argv[1]
-a = float(sys.argv[2]) / 10.0
+a = float(sys.argv[2])
 #a = 0.99
 infiles = sys.argv[3:]
 
