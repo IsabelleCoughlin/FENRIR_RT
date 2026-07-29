@@ -17,3 +17,4 @@ corona_general/plot_flash_sky_img_new.py
 transfer/transfer_grid.fits
 *.pdp
 *.xcm
+*.err
